@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 import requests
 
 # OpenRouter API key
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "(your API Key)"
 
 # Load embedding model
 model = SentenceTransformer('all-MiniLM-L6-v2')
