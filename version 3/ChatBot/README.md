@@ -1,4 +1,4 @@
-# File_analyzer_chatbot
+# chatbot
 
 # Install following libraries using pip install command in terminal
 
