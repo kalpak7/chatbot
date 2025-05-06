@@ -9,7 +9,7 @@ class FileUploadTests(unittest.TestCase):
 
     def test_upload_pdf_file(self):
         # Path to the actual PDF file
-        pdf_file_path = r"C:\Users\Admin\Downloads\error_log_sample.pdf"
+        pdf_file_path = r"path_to_pdf"
         
         with open(pdf_file_path, 'rb') as f:
             # 'f' is the file-like object we upload in the request
