@@ -35,6 +35,7 @@ class FileUploadTests(unittest.TestCase):
                     self.fail(f"Invalid file format: {filename}. Only .pdf or .txt are allowed.")
                 continue
 
+
             with self.subTest(file=filename):
                 with open(file_path, 'rb') as f:
                     files = {'file': (filename, f)}
