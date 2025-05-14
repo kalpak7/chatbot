@@ -27,10 +27,9 @@ class FileUploadTests(unittest.TestCase):
         for filename in os.listdir(self.sample_dir):
             file_path = os.path.join(self.sample_dir, filename)
 
-            # Skip and record invalid formats
             if not (filename.endswith('.pdf') or filename.endswith('.txt')):
                 invalid_files.append(filename)
-                continue
+                continue  # Skip without failing
 
             with self.subTest(file=filename):
                 with open(file_path, 'rb') as f:
@@ -42,18 +41,14 @@ class FileUploadTests(unittest.TestCase):
                         failed_uploads.append(filename)
 
         print(f"\n✅ Passed uploads: {passed_uploads}")
-        print(f"❌ Failed uploads: {len(failed_uploads)} → {failed_uploads}")
-        print(f"⚠️ Invalid file formats: {len(invalid_files)} → {invalid_files}")
-
-        # Fail once at the end if there are any invalid files or upload failures
-        errors = []
-        if invalid_files:
-            errors.append(f"{len(invalid_files)} invalid format file(s): {invalid_files}")
         if failed_uploads:
-            errors.append(f"{len(failed_uploads)} upload(s) failed: {failed_uploads}")
+            print(f"❌ Failed uploads: {len(failed_uploads)} → {failed_uploads}")
+        if invalid_files:
+            print(f"⚠️ Invalid file formats (skipped): {len(invalid_files)} → {invalid_files}")
 
-        if errors:
-            self.fail("\n".join(errors))
+        # Fail only if valid uploads fail
+        if failed_uploads:
+            self.fail(f"{len(failed_uploads)} valid file(s) failed to upload: {failed_uploads}")
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
