@@ -1,10 +1,11 @@
+
 # Import necessary modules
 from flask import Flask, render_template, request
 import pdfplumber  # To extract text from PDF files
 import faiss       # Facebook AI Similarity Search (for fast retrieval)
 import numpy as np # Numerical operations (arrays)
 from sentence_transformers import SentenceTransformer # Embedding model
-import requests    # To call the OpenRouter AI API
+import requests    # To call the Groq AI API
 import re
 
 # Initialize Flask app
@@ -16,8 +17,9 @@ texts = []           # Text chunks (for embeddings)
 index = None         # FAISS index
 faqs = []            # Generated FAQs list
 
-# Your OpenRouter API key (free API key)
-OPENROUTER_API_KEY = "Your_API_Key"  # Replace with your actual API key
+# Your Groq API key (free API key)
+GROQ_API_KEY = "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"  # Replace with your actual API key
+GROQ_MODEL = "llama3-70b-8192"      # You can change to "llama3-8b-8192" for faster, cheaper responses
 
 # Load pre-trained embedding model
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -25,7 +27,6 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 # Home route
 @app.route("/", methods=["GET"])
 def home():
-    # Render the upload form initially
     return render_template("index.html", file_uploaded=False)
 
 # File upload route
@@ -37,30 +38,26 @@ def upload():
     # Extract text from uploaded file
     if file.filename.endswith(".pdf"):
         with pdfplumber.open(file) as pdf:
-            # Merge all pages' text into one string
-            uploaded_text = "\n".join(page.extract_text() for page in pdf.pages)
+            uploaded_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
     elif file.filename.endswith(".txt"):
-        # Read text file directly
         uploaded_text = file.read().decode("utf-8")
     else:
-        # Return to the home page with an error message
         return render_template("index.html", file_uploaded=False, faqs=[], error="File not in PDF or TXT format.")
 
-    # Split text into small chunks (500 characters each)
+    # Split text into chunks (500 characters each)
     texts = [uploaded_text[i:i+500] for i in range(0, len(uploaded_text), 500)]
 
-    # Encode each chunk to get embeddings
+    # Encode text chunks to get embeddings
     embeddings = model.encode(texts)
-    dimension = embeddings.shape[1]  # Embedding dimension
+    dimension = embeddings.shape[1]
 
-    # Create FAISS index and add the embeddings
+    # Create FAISS index and add embeddings
     index = faiss.IndexFlatL2(dimension)
     index.add(np.array(embeddings))
 
-    # Auto-generate FAQs from the uploaded text
+    # Generate FAQs using Groq
     faqs = generate_faqs(uploaded_text)
 
-    # Render the page again with the uploaded content and FAQs
     return render_template("index.html", file_uploaded=True, faqs=faqs)
 
 # Question answering route
@@ -69,66 +66,60 @@ def ask():
     question = request.form["question"]
     answer = ""
     if question:
-        # If user asked a question, generate an answer
         answer = answer_question(question)
-    # Render the page again with answer and FAQs
     return render_template("index.html", file_uploaded=True, answer=answer, faqs=faqs)
 
-# Find best matching chunk and answer the question
+# Use FAISS to find the most relevant text chunk and generate an answer
 def answer_question(question):
-    # Encode the question
     q_emb = model.encode([question])
-    # Search for closest matching chunk in FAISS index
     _, I = index.search(np.array(q_emb), k=1)
-    context = texts[I[0][0]]  # Retrieve best matching chunk
-    # Ask the AI model based on the context
+    context = texts[I[0][0]]
     return ask_ai(context, question)
 
-# Function to ask OpenRouter AI API
+# Function to query Groq LLaMA 3 model
 def ask_ai(context, question):
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": "mistralai/mistral-7b-instruct",
+        "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": "Answer the user's question based on the given context."},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"}
+            {"role": "system", "content": "You're a helpful assistant that explains error logs and helps fix code issues."},
+            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
         ]
     }
-    # Send POST request to OpenRouter API
-    res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+    res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
     if res.status_code == 200:
-        # Return the answer from the API response
         return res.json()['choices'][0]['message']['content']
-    return "Sorry, I couldn't get an answer."
+    return "Sorry, I couldn't get an answer from Groq."
 
-# Function to automatically generate FAQs
+# Function to generate FAQs from uploaded document
 def generate_faqs(text):
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    prompt = f"Based on the following document, generate 6 FAQs with answers:\n\n{text}\n\nFormat:\nQ: ...\nA: ..."
+    prompt = f"Based on the following document, generate 6 helpful FAQs with answers.\n\nDocument:\n{text}\n\nFormat:\nQ: ...\nA: ..."
     data = {
-        "model": "mistralai/mistral-7b-instruct",
-        "messages": [{"role": "user", "content": prompt}]
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are an assistant that summarizes documents into FAQs."},
+            {"role": "user", "content": prompt}
+        ]
     }
-    # Send POST request to OpenRouter API
-    res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+    res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
     faqs = []
     if res.status_code == 200:
-        # Extract the questions and answers from the API response
-       content = res.json()['choices'][0]['message']['content']
-
-       for block in content.strip().split("Q:")[1:]:
-           q, a = block.strip().split("A:")
-           q = q.strip()
-           a = re.sub(r'\d+\.\s*$', '', a.strip()).strip()  # Remove trailing numbers like '2.'
-           faqs.append((q, a))
+        content = res.json()['choices'][0]['message']['content']
+        for block in content.strip().split("Q:")[1:]:
+            if "A:" in block:
+                q, a = block.strip().split("A:", 1)
+                q = q.strip()
+                a = re.sub(r'\d+\.\s*$', '', a.strip()).strip()
+                faqs.append((q, a))
     return faqs
 
-# Run the app in debug mode
-if __name__ == "__main__":
+# Run the app
+if __name__== "__main__":
     app.run(debug=True)
