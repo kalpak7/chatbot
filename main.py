@@ -7,7 +7,7 @@ import numpy as np # Numerical operations (arrays)
 from sentence_transformers import SentenceTransformer # Embedding model
 import requests    # To call the Groq AI API
 import re
-
+import os
 # Initialize Flask app
 app = Flask(__name__)
 
@@ -18,7 +18,11 @@ index = None         # FAISS index
 faqs = []            # Generated FAQs list
 
 # Your Groq API key (free API key)
-GROQ_API_KEY = "you_api_key"  # Replace with your actual API key
+<<<<<<< HEAD
+GROQ_API_KEY =  os.getenv('GROQ_API_KEY')  # Replace with your actual API key
+=======
+#GROQ_API_KEY = "you_api_key"  # Replace with your actual API key
+>>>>>>> cce4c92d3b8f5f48f80dd92e0f26a3fd9ea86932
 GROQ_MODEL = "llama3-70b-8192"      # You can change to "llama3-8b-8192" for faster, cheaper responses
 
 # Load pre-trained embedding model
@@ -122,4 +126,8 @@ def generate_faqs(text):
 
 # Run the app
 if __name__== "__main__":
+<<<<<<< HEAD
     app.run(debug=True)
+=======
+    app.run(debug=True)
+>>>>>>> cce4c92d3b8f5f48f80dd92e0f26a3fd9ea86932

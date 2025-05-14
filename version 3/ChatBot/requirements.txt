@@ -1,7 +1,0 @@
-flask
-pdfplumber
-faiss-cpu
-numpy
-sentence-transformers
-requests
-pytest
