@@ -26,4 +26,4 @@ jobs:
 
       - name: Run tests
         run: |
-          python app_test.py
+          python -m unittest app_test.py  # Use unittest command to run the test
