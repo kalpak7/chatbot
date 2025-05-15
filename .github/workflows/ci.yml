@@ -30,3 +30,21 @@ jobs:
       - name: Run tests
         run: |
           python -m unittest app_test.py  # Use unittest command to run the test
+
+  notify:
+    name: Telegram Notification
+    needs: test
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram message
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ✅ *CI Passed on main*
+            👤 *By:* ${{ github.actor }}
+            📝 *Message:* ${{ github.event.head_commit.message }}
+            🔗 *Commit:* https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+          format: markdown
