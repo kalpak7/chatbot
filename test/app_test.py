@@ -7,7 +7,7 @@ from main import app
 
 class FileUploadTests(unittest.TestCase):
     def setUp(self):
-        self.sample_dir = 'sample_files'
+        self.sample_dir = 'sample_input_files'
         self.server_process = Process(target=app.run, kwargs={"debug": False, "use_reloader": False})
         self.server_process.start()
         time.sleep(3)  # Allow time for Flask to start
