@@ -11,9 +11,11 @@
   <body>
     <div class="container">
       <h1>Chatbot File Analyzer</h1>
+
       {% if error %}
       <div class="error-box"><strong>Error:</strong> {{ error }}</div>
       {% endif %}
+
       <!-- File upload -->
       <form action="/upload" method="POST" enctype="multipart/form-data">
         <input type="file" name="file" required />
@@ -26,7 +28,7 @@
         <input
           type="text"
           name="question"
-          placeholder="Ask about the file..."
+          placeholder="Ask question ..."
           required
         />
         <button type="submit">Ask</button>
@@ -35,17 +37,21 @@
 
       <!-- Answer -->
       {% if answer %}
-      <div class="result-box"><strong>Answer:</strong> {{ answer }}</div>
+      <div class="answer-box">
+        <div class="answer-header">💡 Answer</div>
+        <div class="answer-content">{{ answer }}</div>
+      </div>
       {% endif %}
 
       <!-- FAQs -->
       {% if faqs %}
-      <h2>Frequently Asked Questions</h2>
-      <div class="result-box">
+      <h2 class="faq-title">📌 Frequently Asked Questions</h2>
+      <div class="faq-grid">
         {% for q, a in faqs %}
-        <p><strong>Q:</strong> {{ q }}</p>
-        <p><strong>A:</strong> {{ a }}</p>
-        <hr />
+        <div class="faq-card">
+          <div class="faq-q"><span>Q:</span> {{ q }}</div>
+          <div class="faq-a"><span>A:</span> {{ a }}</div>
+        </div>
         {% endfor %}
       </div>
       {% endif %}
