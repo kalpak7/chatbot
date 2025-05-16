@@ -18,7 +18,7 @@ index = None  # Will hold the FAISS index
 texts = []  # Will hold chunks of uploaded document text
 uploaded_text = ""  # Full extracted text from uploaded file
 faq_threshold = 2  # Minimum frequency for a question to be promoted to FAQ
-OPENROUTER_API_KEY = "your Api Key"  # Your OpenRouter API key (keep this private)
+OPENROUTER_API_KEY = ""  # Your OpenRouter API key (keep this private)
 
 # Function to initialize the SQLite database and table
 def init_db():
