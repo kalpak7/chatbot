@@ -2,9 +2,9 @@ name: Run Flask App Tests
 
 on:
   push:
-    branches: [main, kalpak]   # watch main and kalpak branches
+    branches: [main]
   pull_request:
-    branches: [main, kalpak]
+    branches: [main]
 
 jobs:
   test:
@@ -29,14 +29,13 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m unittest test/app_test.py
+          python -m unittest test/app_test.py  # Use unittest command to run the test
 
   notify:
     name: Telegram Notification
     needs: test
     if: success()
     runs-on: ubuntu-latest
-
     steps:
       - name: Send Telegram message
         uses: appleboy/telegram-action@master
@@ -44,9 +43,8 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ✅ *CI Passed on ${{ github.ref_name }}*
+            ✅ *CI Passed on main*
             👤 *By:* ${{ github.actor }}
             📝 *Message:* ${{ github.event.head_commit.message }}
             🔗 *Commit:* https://github.com/${{ github.repository }}/commit/${{ github.sha }}
-            🌐 *Live Site:* https://error-debugger-chatbot.onrender.com
           format: markdown

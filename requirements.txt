@@ -5,4 +5,3 @@ numpy==2.2.5
 sentence-transformers==4.1.0
 requests==2.32.3
 huggingface_hub[hf_xet]
-gunicorn
