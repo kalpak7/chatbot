@@ -18,7 +18,7 @@ index = None  # Will hold FAISS search index (used after file upload)
 texts = []  # Will store the document in 500-character chunks
 uploaded_text = ""  # Holds the complete text from the uploaded document
 faq_threshold = 2  # Minimum times an answer must be seen before it becomes a FAQ
-OPENROUTER_API_KEY = "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"  # API key to use the OpenRouter API
+OPENROUTER_API_KEY = "Your Api Key"  # API key to use the OpenRouter API
 
 # Function to initialize the SQLite database and create the 'faqs' table
 def init_db():
