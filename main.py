@@ -1,124 +1,129 @@
-# Import necessary modules
-from flask import Flask, render_template, request  # Flask modules for web app
-import sqlite3  # For SQLite database operations
-import numpy as np  # For handling embeddings and vector math
-from sentence_transformers import SentenceTransformer  # To generate embeddings
-import faiss  # Facebook AI Similarity Search library for semantic search
-import pdfplumber  # To extract text from PDF files
-import requests  # For making HTTP requests to OpenRouter API
+# Import all necessary Python libraries/modules for the app to work
+from flask import Flask, render_template, request  # Flask is used to build web apps. 'render_template' loads HTML files, 'request' handles user input.
+import sqlite3  # Allows the app to use SQLite database for storing FAQs
+import numpy as np  # NumPy is used for working with vectors (embeddings)
+from sentence_transformers import SentenceTransformer  # This is a pre-trained model to convert text into embeddings (numerical vector format)
+import faiss  # FAISS is a tool to search similar vectors quickly (used for finding related content)
+import pdfplumber  # Extracts text from PDF files
+import requests  # Allows sending HTTP requests to external APIs like OpenRouter
 
-# Initialize Flask application
+# Create a new Flask web application instance
 app = Flask(__name__)
 
-# Load a small and fast sentence embedding model
+# Load a small and fast pre-trained model to convert text to embeddings
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Global variables
-index = None  # Will hold FAISS index after document upload
-texts = []  # List of document chunks (500-char)
-uploaded_text = ""  # Complete uploaded document text
-faq_threshold = 2  # Frequency after which something becomes a FAQ
-OPENROUTER_API_KEY = "your api key"  # API key for OpenRouter 
+# Global variables (used throughout the app)
+index = None  # Will hold FAISS search index (used after file upload)
+texts = []  # Will store the document in 500-character chunks
+uploaded_text = ""  # Holds the complete text from the uploaded document
+faq_threshold = 2  # Minimum times an answer must be seen before it becomes a FAQ
+OPENROUTER_API_KEY = "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"  # API key to use the OpenRouter API
 
-# Initialize SQLite DB with a table to store FAQs
+# Function to initialize the SQLite database and create the 'faqs' table
 def init_db():
-    conn = sqlite3.connect('faq_db.db')  # Connect to database
+    conn = sqlite3.connect('faq_db.db')  # Connect to the SQLite database (creates if doesn't exist)
     cursor = conn.cursor()
-    # Create faqs table if it doesn't exist already
+    # Create a table to store FAQs (if it doesn't already exist)
     cursor.execute('''CREATE TABLE IF NOT EXISTS faqs (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        question TEXT,
-                        answer TEXT,
-                        frequency INTEGER,
-                        embedding BLOB)''')
-    conn.commit()  # Save changes
-    conn.close()  # Close connection
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- Auto-incrementing ID
+                        question TEXT,                         -- Question part of FAQ
+                        answer TEXT,                           -- Answer part
+                        frequency INTEGER,                     -- How many times this answer occurred
+                        embedding BLOB)''')                    # Stored embedding(asbinary)
+    conn.commit()  # Save changes to the database
+    conn.close()  # Close the database connection
 
-# Function to compute cosine similarity between two vectors
+# Function to calculate cosine similarity between two vectors (to compare meaning)
 def cosine_similarity(vec1, vec2):
-    dot = np.dot(vec1, vec2)  # Dot product
-    norm1 = np.linalg.norm(vec1)  # Magnitude of vec1
-    norm2 = np.linalg.norm(vec2)  # Magnitude of vec2
-    return dot / (norm1 * norm2)  # Cosine similarity
+    dot = np.dot(vec1, vec2)  # Dot product of vectors
+    norm1 = np.linalg.norm(vec1)  # Length (magnitude) of vector 1
+    norm2 = np.linalg.norm(vec2)  # Length of vector 2
+    return dot / (norm1 * norm2)  # Return cosine similarity (value between -1 to 1)
 
-# Use LLM to generate a short question from an answer (used in FAQs)
+# Function to generate a short FAQ-style question from a given answer using LLM
 def generate_question_from_answer(answer):
+    # Create a prompt that asks LLM to make a question from a given answer
     prompt = f"Create a short , mini , suitable , clear question that would be answered by this:\n\n{answer}"
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",  # API key for OpenRouter
         "Content-Type": "application/json"
     }
     data = {
-        "model": "mistralai/mistral-7b-instruct",
+        "model": "mistralai/mistral-7b-instruct",  # Chosen LLM model from OpenRouter
         "messages": [
             {"role": "system", "content": "You generate FAQ-style questions from answers."},
             {"role": "user", "content": prompt}
         ]
     }
+    # Make a POST request to OpenRouter's API
     response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
     if response.status_code == 200:
-        return response.json()['choices'][0]['message']['content'].strip()  # Return question
+        # Return the generated question
+        return response.json()['choices'][0]['message']['content'].strip()
     else:
-        return "Frequently asked question"  # Fallback
+        return "Frequently asked question"  # If something goes wrong, use a default
 
-# Store answers and create FAQ question when frequency crosses threshold
+# Function to store an answer and convert it into an FAQ if needed
 def store_answer_and_generate_faq(answer, embedding):
-    conn = sqlite3.connect('faq_db.db')
+    conn = sqlite3.connect('faq_db.db')  # Connect to the database
     cursor = conn.cursor()
-    embedding_np = np.array(embedding)[0]  # Get vector from list
+    embedding_np = np.array(embedding)[0]  # Convert embedding list to numpy array
 
-    # Check for semantic similarity with existing answers
+    # Fetch all stored FAQs from the database
     cursor.execute("SELECT id, question, answer, frequency, embedding FROM faqs")
     all_rows = cursor.fetchall()
 
-    matched = False
+    matched = False  # Flag to check if similar answer already exists
+
+    # Compare new answer's embedding with stored ones
     for row in all_rows:
         q_id, question, existing_answer, freq, emb_blob = row
         stored_embedding = np.frombuffer(emb_blob, dtype=np.float32)  # Convert blob to vector
-        sim = cosine_similarity(embedding_np, stored_embedding)  # Check similarity
+        sim = cosine_similarity(embedding_np, stored_embedding)  # Get similarity score
 
-        if sim > 0.8:  # If similar, increase frequency
-            cursor.execute('UPDATE faqs SET frequency = frequency + 1 WHERE id = ?', (q_id,))
+        if sim > 0.8:  # If very similar
+            cursor.execute('UPDATE faqs SET frequency = frequency + 1 WHERE id = ?', (q_id,))  # Increment frequency
             matched = True
             break
 
-    # If not matched, insert as a new answer (initial frequency = 1)
+    # If not matched, insert this as a new entry
     if not matched:
         cursor.execute('INSERT INTO faqs (question, answer, frequency, embedding) VALUES (?, ?, ?, ?)',
                        ("", answer, 1, embedding_np.astype(np.float32).tobytes()))
 
-    # Now generate a FAQ-style question if frequency threshold is crossed and no question exists
+    # For each answer where frequency is high enough but no question exists, generate one
     cursor.execute('SELECT id, answer, frequency FROM faqs WHERE frequency >= ? AND question = ""', (faq_threshold,))
     for row in cursor.fetchall():
         faq_id, faq_answer, _ = row
-        generated_q = generate_question_from_answer(faq_answer)  # Use LLM to make question
-        cursor.execute('UPDATE faqs SET question = ? WHERE id = ?', (generated_q, faq_id))
+        generated_q = generate_question_from_answer(faq_answer)  # Generate a question
+        cursor.execute('UPDATE faqs SET question = ? WHERE id = ?', (generated_q, faq_id))  # Save it
 
-    conn.commit()
-    conn.close()
+    conn.commit()  # Save all changes
+    conn.close()  # Close DB connection
 
-# Retrieve FAQs from the database
+# Function to fetch FAQs to show on the website
 def get_faqs():
-    conn = sqlite3.connect('faq_db.db')
+    conn = sqlite3.connect('faq_db.db')  # Connect to database
     cursor = conn.cursor()
-    # Only return entries where frequency threshold is met and question is generated
+    # Get only FAQs that crossed threshold and have a question
     cursor.execute('SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ""', (faq_threshold,))
     faqs = cursor.fetchall()
-    conn.close()
-    return faqs
+    conn.close()  # Close connection
+    return faqs  # Return list of FAQs
 
-# Extract full text from uploaded PDF or TXT file
+# Function to extract full text from uploaded file (PDF or TXT)
 def extract_text_from_file(file):
-    global uploaded_text
-    if file.filename.endswith(".pdf"):
+    global uploaded_text  # Use the global variable
+    if file.filename.endswith(".pdf"):  # If file is PDF
         with pdfplumber.open(file) as pdf:
-            uploaded_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-    elif file.filename.endswith(".txt"):
-        uploaded_text = file.read().decode("utf-8")
+            uploaded_text = "\n".join(page.extract_text() or "" for page in pdf.pages)  # Combine all pages
+    elif file.filename.endswith(".txt"):  # If file is TXT
+        uploaded_text = file.read().decode("utf-8")  # Read and decode text
     else:
-        raise ValueError("Unsupported file format. Use PDF or TXT.")
+        raise ValueError("Unsupported file format. Use PDF or TXT.")  # Raise error for other file types
 
-# Ask OpenRouter API using context and user question
+# Function to ask OpenRouter LLM using context and question
 def ask_openrouter_api(context, question):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -136,58 +141,58 @@ def ask_openrouter_api(context, question):
     }
     response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
     if response.status_code == 200:
-        return response.json()['choices'][0]['message']['content'].strip()
+        return response.json()['choices'][0]['message']['content'].strip()  # Return answer
     else:
-        return "Sorry, I couldn't generate an answer."
+        return "Sorry, I couldn't generate an answer."  # Default error message
 
-# Route: Home Page
+# Route for home page
 @app.route("/", methods=["GET"])
 def home():
-    faqs = get_faqs()  # Fetch all FAQs to display
-    return render_template("index.html", faqs=faqs, file_uploaded=False)
+    faqs = get_faqs()  # Load all FAQs from database
+    return render_template("index.html", faqs=faqs, file_uploaded=False)  # Show home page
 
-# Route: Handle File Upload
+# Route to handle file upload (PDF or TXT)
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files["file"]
+    file = request.files["file"]  # Get uploaded file
     try:
-        extract_text_from_file(file)  # Extract full document text
+        extract_text_from_file(file)  # Extract all text from it
         global texts
-        # Split document into chunks of 500 characters
+        # Split full text into chunks of 500 characters
         texts = [uploaded_text[i:i + 500] for i in range(0, len(uploaded_text), 500)]
-        embeddings = model.encode(texts)  # Generate embeddings
+        embeddings = model.encode(texts)  # Generate embeddings for each chunk
 
-        # Initialize FAISS index and add vectors
+        # Create FAISS index using the embedding dimensions
         global index
         dimension = embeddings.shape[1]
         index = faiss.IndexFlatL2(dimension)
-        index.add(np.array(embeddings))
+        index.add(np.array(embeddings))  # Add embeddings to FAISS index
 
         faqs = get_faqs()
-        return render_template("index.html", file_uploaded=True, faqs=faqs)
+        return render_template("index.html", file_uploaded=True, faqs=faqs)  # Show success screen
     except Exception as e:
-        return render_template("index.html", file_uploaded=False, error=str(e))
+        return render_template("index.html", file_uploaded=False, error=str(e))  # Show error
 
-# Route: Handle Question Input from User
+# Route to handle user question
 @app.route("/ask", methods=["POST"])
 def ask():
-    question = request.form["question"]  # Get user input
+    question = request.form["question"]  # Get question typed by user
     answer = ""
     if question:
-        q_emb = model.encode([question])  # Embed the question
-        _, I = index.search(np.array(q_emb), k=1)  # Search similar chunk
-        context = texts[I[0][0]]  # Get best matched context
-        answer = ask_openrouter_api(context, question)  # Ask LLM
+        q_emb = model.encode([question])  # Convert question to embedding
+        _, I = index.search(np.array(q_emb), k=1)  # Find most similar text chunk
+        context = texts[I[0][0]]  # Get text chunk as context
+        answer = ask_openrouter_api(context, question)  # Get answer from LLM
 
-        ans_emb = model.encode([answer])  # Perform semantic analysis on answer
-        store_answer_and_generate_faq(answer, ans_emb)  # Store answer in DB
+        ans_emb = model.encode([answer])  # Create embedding for answer
+        store_answer_and_generate_faq(answer, ans_emb)  # Store it in DB if needed
 
-    faqs = get_faqs()
+    faqs = get_faqs()  # Refresh FAQ list
     return render_template("index.html", answer=answer, faqs=faqs, file_uploaded=True)
 
-# Initialize database on app start
+# Initialize the database when app starts
 init_db()
 
-# Run app in debug mode for development
+# Run the Flask app in debug mode (for development only)
 if __name__ == "__main__":
     app.run(debug=True)
