@@ -2,28 +2,27 @@
 # Import necessary modules
 from flask import Flask, render_template, request
 import pdfplumber  # To extract text from PDF files
-import faiss       # Facebook AI Similarity Search (for fast retrieval)
-import numpy as np # Numerical operations (arrays)
-from sentence_transformers import SentenceTransformer # Embedding model
 import requests    # To call the Groq AI API
 import re
 import os
+
 # Initialize Flask app
 app = Flask(__name__)
 
 # Global variables to hold data
 uploaded_text = ""   # Full text extracted from uploaded file
-texts = []           # Text chunks (for embeddings)
-index = None         # FAISS index
 faqs = []            # Generated FAQs list
 
-# Your Groq API key (free API key)
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')  # Replace with your actual API key
-#GROQ_API_KEY = "you_api_key"  # Replace with your actual API key
-GROQ_MODEL = "llama3-70b-8192"      # You can change to "llama3-8b-8192" for faster, cheaper responses
+# Your Groq API key (from environment variable or hardcoded)
+#GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+GROQ_MODEL = "llama3-70b-8192"
 
-# Load pre-trained embedding model
-model = SentenceTransformer('all-MiniLM-L6-v2')
+def get_groq_api_key():
+   
+    key = os.getenv('GROQ_API_KEY')
+    if not key:
+        warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
+    return key
 
 # Home route
 @app.route("/", methods=["GET"])
@@ -33,7 +32,7 @@ def home():
 # File upload route
 @app.route("/upload", methods=["POST"])
 def upload():
-    global uploaded_text, texts, index, faqs
+    global uploaded_text, faqs
     file = request.files["file"]
 
     # Extract text from uploaded file
@@ -44,17 +43,6 @@ def upload():
         uploaded_text = file.read().decode("utf-8")
     else:
         return render_template("index.html", file_uploaded=False, faqs=[], error="File not in PDF or TXT format.")
-
-    # Split text into chunks (500 characters each)
-    texts = [uploaded_text[i:i+500] for i in range(0, len(uploaded_text), 500)]
-
-    # Encode text chunks to get embeddings
-    embeddings = model.encode(texts)
-    dimension = embeddings.shape[1]
-
-    # Create FAISS index and add embeddings
-    index = faiss.IndexFlatL2(dimension)
-    index.add(np.array(embeddings))
 
     # Generate FAQs using Groq
     faqs = generate_faqs(uploaded_text)
@@ -70,15 +58,13 @@ def ask():
         answer = answer_question(question)
     return render_template("index.html", file_uploaded=True, answer=answer, faqs=faqs)
 
-# Use FAISS to find the most relevant text chunk and generate an answer
+# Directly use the uploaded full document as context
 def answer_question(question):
-    q_emb = model.encode([question])
-    _, I = index.search(np.array(q_emb), k=1)
-    context = texts[I[0][0]]
-    return ask_ai(context, question)
+    return ask_ai(uploaded_text, question)
 
 # Function to query Groq LLaMA 3 model
 def ask_ai(context, question):
+    GROQ_API_KEY = get_groq_api_key()
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -86,7 +72,7 @@ def ask_ai(context, question):
     data = {
         "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": "You're a helpful assistant that explains error logs and helps fix code issues."},
+            {"role": "system", "content": "You're a helpful assistant that explains error logs and helps fix code issues and you will provide error name and step by step solution to how to solve them and it should not go more than 3 lines."},
             {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
         ]
     }
@@ -97,11 +83,12 @@ def ask_ai(context, question):
 
 # Function to generate FAQs from uploaded document
 def generate_faqs(text):
+    GROQ_API_KEY = get_groq_api_key()
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    prompt = f"Based on the following document, generate 6 helpful FAQs with answers.\n\nDocument:\n{text}\n\nFormat:\nQ: ...\nA: ..."
+    prompt = f"Based on the following document, generate 2 helpful FAQs with answers and it should be just name of the error and what we should do to solve it and shouldnt exceed 3 lines.\n\nDocument:\n{text}\n\nFormat:\nQ: ...\nA: ..."
     data = {
         "model": GROQ_MODEL,
         "messages": [
@@ -122,5 +109,5 @@ def generate_faqs(text):
     return faqs
 
 # Run the app
-if __name__== "__main__":
+if __name__ == "__main__":
     app.run(debug=True)
