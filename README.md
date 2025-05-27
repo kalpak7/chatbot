@@ -1,7 +1,11 @@
 Error Debugger Chatbot with Groq Ai
 
+
+
 Description:
 A Flask web app that accepts .pdf or .txt files, extracts and chunks text, encodes it using SentenceTransformers, and queries the Groq LLaMA 3 (70B or 8B) API to generate FAQs or answer user questions.
+
+
 
 
 Features:
@@ -20,11 +24,15 @@ Telegram CI notifications
 
 
 
+
+
 Requirements:
 
 Python 3.10+
 
 Groq API Key (free at https://console.groq.com/keys)
+
+
 
 
 
@@ -61,6 +69,7 @@ http://127.0.0.1:5000/
 
 
 
+
 Run with Docker
 
 1. Build Docker image:
@@ -71,6 +80,7 @@ docker build -t error-debugger-chatbot .
 2. Run the container:
 
 docker run -e GROQ_API_KEY=your_api_key_here -p 5000:5000 error-debugger-chatbot
+
 
 
 
