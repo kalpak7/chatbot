@@ -14,8 +14,15 @@ uploaded_text = ""   # Full text extracted from uploaded file
 faqs = []            # Generated FAQs list
 
 # Your Groq API key (from environment variable or hardcoded)
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+#GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 GROQ_MODEL = "llama3-70b-8192"
+
+def get_groq_api_key():
+   
+    key = os.getenv('GROQ_API_KEY')
+    if not key:
+        warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
+    return key
 
 # Home route
 @app.route("/", methods=["GET"])
@@ -57,6 +64,7 @@ def answer_question(question):
 
 # Function to query Groq LLaMA 3 model
 def ask_ai(context, question):
+    GROQ_API_KEY = get_groq_api_key()
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -75,6 +83,7 @@ def ask_ai(context, question):
 
 # Function to generate FAQs from uploaded document
 def generate_faqs(text):
+    GROQ_API_KEY = get_groq_api_key()
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
