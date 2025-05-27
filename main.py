@@ -14,9 +14,9 @@ uploaded_text = ""   # Full text extracted from uploaded file
 faqs = []            # Generated FAQs list
 
 # Your Groq API key (from environment variable or hardcoded)
-#GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 GROQ_MODEL = "llama3-70b-8192"
-GROQ_API_KEY = "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"  # Replace with your actual API key
+
 # Home route
 @app.route("/", methods=["GET"])
 def home():
