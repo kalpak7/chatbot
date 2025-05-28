@@ -1,115 +1,152 @@
-
-# Import necessary modules
-from flask import Flask, render_template, request
-import pdfplumber  # To extract text from PDF files
-import requests    # To call the Groq AI API
-import re
 import os
+import sqlite3
+import numpy as np
+import warnings
+from flask import Flask, render_template, request
+from sentence_transformers import SentenceTransformer
+import pdfplumber
+import requests
 
-# Initialize Flask app
 app = Flask(__name__)
 
-# Global variables to hold data
-uploaded_text = ""   # Full text extracted from uploaded file
-faqs = []            # Generated FAQs list
+# Load embedding model for comparing answers
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Your Groq API key (from environment variable or hardcoded)
-#GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+# Constants
 GROQ_MODEL = "llama3-70b-8192"
+faq_threshold = 2
+uploaded_text = ""
+
 
 def get_groq_api_key():
-   
-    key = os.getenv('GROQ_API_KEY')
+    #key = os.getenv('GROQ_API_KEY')
+    key = "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"  # Replace with your actual API key
     if not key:
         warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
     return key
 
-# Home route
-@app.route("/", methods=["GET"])
-def home():
-    return render_template("index.html", file_uploaded=False)
 
-# File upload route
-@app.route("/upload", methods=["POST"])
-def upload():
-    global uploaded_text, faqs
-    file = request.files["file"]
+def init_db():
+    conn = sqlite3.connect("faq_db.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS faqs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT,
+            answer TEXT,
+            frequency INTEGER,
+            embedding BLOB
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-    # Extract text from uploaded file
+
+def cosine_similarity(vec1, vec2):
+    dot = np.dot(vec1, vec2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+    return dot / (norm1 * norm2)
+
+
+def store_answer_and_generate_faq(answer, embedding):
+    conn = sqlite3.connect("faq_db.db")
+    cursor = conn.cursor()
+    emb = np.array(embedding)[0]
+
+    cursor.execute("SELECT id, answer, frequency, embedding FROM faqs")
+    for row in cursor.fetchall():
+        faq_id, existing_answer, freq, stored_emb_blob = row
+        stored_emb = np.frombuffer(stored_emb_blob, dtype=np.float32)
+        sim = cosine_similarity(emb, stored_emb)
+        if sim > 0.8:
+            cursor.execute("UPDATE faqs SET frequency = frequency + 1 WHERE id = ?", (faq_id,))
+            # Set question = answer if it reaches threshold and question is still empty
+            if freq + 1 >= faq_threshold:
+                cursor.execute(
+                    "UPDATE faqs SET question = answer WHERE id = ? AND question = ''",
+                    (faq_id,)
+                )
+            conn.commit()
+            conn.close()
+            return
+
+    # Insert new answer
+    cursor.execute(
+        "INSERT INTO faqs (question, answer, frequency, embedding) VALUES (?, ?, ?, ?)",
+        ("", answer, 1, emb.astype(np.float32).tobytes())
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_faqs():
+    conn = sqlite3.connect("faq_db.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ''", (faq_threshold,))
+    faqs = cursor.fetchall()
+    conn.close()
+    return faqs
+
+
+def extract_text_from_file(file):
+    global uploaded_text
     if file.filename.endswith(".pdf"):
         with pdfplumber.open(file) as pdf:
-            uploaded_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+            uploaded_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
     elif file.filename.endswith(".txt"):
         uploaded_text = file.read().decode("utf-8")
     else:
-        return render_template("index.html", file_uploaded=False, faqs=[], error="File not in PDF or TXT format.")
+        raise ValueError("Unsupported file format. Use PDF or TXT.")
 
-    # Generate FAQs using Groq
-    faqs = generate_faqs(uploaded_text)
 
-    return render_template("index.html", file_uploaded=True, faqs=faqs)
-
-# Question answering route
-@app.route("/ask", methods=["POST"])
-def ask():
-    question = request.form["question"]
-    answer = ""
-    if question:
-        answer = answer_question(question)
-    return render_template("index.html", file_uploaded=True, answer=answer, faqs=faqs)
-
-# Directly use the uploaded full document as context
-def answer_question(question):
-    return ask_ai(uploaded_text, question)
-
-# Function to query Groq LLaMA 3 model
-def ask_ai(context, question):
-    GROQ_API_KEY = get_groq_api_key()
+def ask_groq_api(context, question):
+    api_key = get_groq_api_key()
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
+    prompt = f"Context: {context}\nQuestion: {question}\nAnswer:"
     data = {
         "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": "You're a helpful assistant that explains error logs and helps fix code issues and you will provide error name and step by step solution to how to solve them and it should not go more than 3 lines."},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
-        ]
-    }
-    res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
-    if res.status_code == 200:
-        return res.json()['choices'][0]['message']['content']
-    return "Sorry, I couldn't get an answer from Groq."
-
-# Function to generate FAQs from uploaded document
-def generate_faqs(text):
-    GROQ_API_KEY = get_groq_api_key()
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    prompt = f"Based on the following document, generate 2 helpful FAQs with answers and it should be just name of the error and what we should do to solve it and shouldnt exceed 3 lines.\n\nDocument:\n{text}\n\nFormat:\nQ: ...\nA: ..."
-    data = {
-        "model": GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": "You are an assistant that summarizes documents into FAQs."},
+            {"role": "system", "content": "You are a helpful assistant. Provide short, clear answers for FAQ purposes."},
             {"role": "user", "content": prompt}
         ]
     }
     res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
-    faqs = []
-    if res.status_code == 200:
-        content = res.json()['choices'][0]['message']['content']
-        for block in content.strip().split("Q:")[1:]:
-            if "A:" in block:
-                q, a = block.strip().split("A:", 1)
-                q = q.strip()
-                a = re.sub(r'\d+\.\s*$', '', a.strip()).strip()
-                faqs.append((q, a))
-    return faqs
+    if res.ok:
+        return res.json()['choices'][0]['message']['content'].strip()
+    return "Sorry, no answer could be generated."
 
-# Run the app
+
+@app.route("/", methods=["GET"])
+def home():
+    return render_template("index.html", faqs=get_faqs(), file_uploaded=False)
+
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    file = request.files.get("file")
+    try:
+        extract_text_from_file(file)
+        return render_template("index.html", file_uploaded=True, faqs=get_faqs())
+    except Exception as e:
+        return render_template("index.html", file_uploaded=False, error=str(e))
+
+
+@app.route("/ask", methods=["POST"])
+def ask():
+    question = request.form.get("question", "").strip()
+    answer = ""
+    if question and uploaded_text:
+        answer = ask_groq_api(uploaded_text, question)
+        ans_emb = model.encode([answer])
+        store_answer_and_generate_faq(answer, ans_emb)
+
+    return render_template("index.html", answer=answer, file_uploaded=True, faqs=get_faqs())
+
+
 if __name__ == "__main__":
+    init_db()
     app.run(debug=True)
-
-
