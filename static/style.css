@@ -65,7 +65,6 @@ button:hover {
   margin-top: 20px;
 }
 
-/* Answer Box */
 .answer-box {
   background: #e9f6ec;
   border-left: 6px solid #2ecc71;
@@ -91,7 +90,6 @@ button:hover {
   color: #333;
 }
 
-/* FAQ styles */
 .faq-title {
   margin-top: 50px;
   font-size: 26px;
@@ -111,7 +109,7 @@ button:hover {
   border-left: 5px solid #4a90e2;
   border-radius: 10px;
   padding: 20px;
-  box-shadow: 0 6px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s ease;
 }
 
@@ -131,7 +129,8 @@ button:hover {
   line-height: 1.5;
 }
 
-.faq-q span, .faq-a span {
+.faq-q span,
+.faq-a span {
   color: #4a90e2;
   font-weight: bold;
   margin-right: 5px;
