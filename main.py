@@ -19,8 +19,10 @@ uploaded_text = ""
 
 
 def get_groq_api_key():
-    # Hardcoded API key from kalpak branch
-    key = "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"  # Replace with your actual API key
+
+    key = os.getenv('GROQ_API_KEY')
+    #key = "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"  # Replace with your actual API key
+
     if not key:
         warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
     return key
