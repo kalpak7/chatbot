@@ -1,113 +1,154 @@
-
-# Import necessary modules
+# Import required modules
 from flask import Flask, render_template, request
-import pdfplumber  # To extract text from PDF files
-import requests    # To call the Groq AI API
-import re
+import sqlite3
+import numpy as np
+import pdfplumber
+import requests
 import os
 
-# Initialize Flask app
+# Flask app
 app = Flask(__name__)
 
-# Global variables to hold data
-uploaded_text = ""   # Full text extracted from uploaded file
-faqs = []            # Generated FAQs list
-
-# Your Groq API key (from environment variable or hardcoded)
-#GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+# Global variables
+uploaded_text = ""
+faq_threshold = 2
+GROQ_API_KEY = "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"  # Replace with your actual API key
 GROQ_MODEL = "llama3-70b-8192"
 
-def get_groq_api_key():
-   
-    key = os.getenv('GROQ_API_KEY')
-    if not key:
-        warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
-    return key
+# Initialize SQLite database
+def init_db():
+    conn = sqlite3.connect('faq_db.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS faqs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT,
+            answer TEXT,
+            frequency INTEGER)
+    ''')
+    conn.commit()
+    conn.close()
 
-# Home route
-@app.route("/", methods=["GET"])
-def home():
-    return render_template("index.html", file_uploaded=False)
-
-# File upload route
-@app.route("/upload", methods=["POST"])
-def upload():
-    global uploaded_text, faqs
-    file = request.files["file"]
-
-    # Extract text from uploaded file
-    if file.filename.endswith(".pdf"):
-        with pdfplumber.open(file) as pdf:
-            uploaded_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
-    elif file.filename.endswith(".txt"):
-        uploaded_text = file.read().decode("utf-8")
-    else:
-        return render_template("index.html", file_uploaded=False, faqs=[], error="File not in PDF or TXT format.")
-
-    # Generate FAQs using Groq
-    faqs = generate_faqs(uploaded_text)
-
-    return render_template("index.html", file_uploaded=True, faqs=faqs)
-
-# Question answering route
-@app.route("/ask", methods=["POST"])
-def ask():
-    question = request.form["question"]
-    answer = ""
-    if question:
-        answer = answer_question(question)
-    return render_template("index.html", file_uploaded=True, answer=answer, faqs=faqs)
-
-# Directly use the uploaded full document as context
-def answer_question(question):
-    return ask_ai(uploaded_text, question)
-
-# Function to query Groq LLaMA 3 model
-def ask_ai(context, question):
-    GROQ_API_KEY = get_groq_api_key()
+# Generate question from answer using Groq
+def generate_question_from_answer(answer):
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
+    prompt = f"Create a short, clear, FAQ-style question that would be answered by this:\n\n{answer}"
     data = {
         "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": "You're a helpful assistant that explains error logs and helps fix code issues and you will provide error name and step by step solution to how to solve them and it should not go more than 3 lines."},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
-        ]
-    }
-    res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
-    if res.status_code == 200:
-        return res.json()['choices'][0]['message']['content']
-    return "Sorry, I couldn't get an answer from Groq."
-
-# Function to generate FAQs from uploaded document
-def generate_faqs(text):
-    GROQ_API_KEY = get_groq_api_key()
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    prompt = f"Based on the following document, generate 2 helpful FAQs with answers and it should be just name of the error and what we should do to solve it and shouldnt exceed 3 lines.\n\nDocument:\n{text}\n\nFormat:\nQ: ...\nA: ..."
-    data = {
-        "model": GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": "You are an assistant that summarizes documents into FAQs."},
+            {"role": "system", "content": "You generate FAQ-style questions from answers."},
             {"role": "user", "content": prompt}
         ]
     }
     res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
-    faqs = []
     if res.status_code == 200:
-        content = res.json()['choices'][0]['message']['content']
-        for block in content.strip().split("Q:")[1:]:
-            if "A:" in block:
-                q, a = block.strip().split("A:", 1)
-                q = q.strip()
-                a = re.sub(r'\d+\.\s*$', '', a.strip()).strip()
-                faqs.append((q, a))
+        return res.json()['choices'][0]['message']['content'].strip()
+    return "Frequently asked question"
+
+# Store answer and manage FAQ entries
+def store_answer_and_generate_faq(answer):
+    conn = sqlite3.connect('faq_db.db')
+    cursor = conn.cursor()
+
+    # Check for similar existing answer
+    cursor.execute("SELECT id, answer, frequency FROM faqs")
+    all_rows = cursor.fetchall()
+
+    matched = False
+    for row in all_rows:
+        q_id, existing_answer, freq = row
+        if existing_answer.strip().lower() == answer.strip().lower():
+            cursor.execute('UPDATE faqs SET frequency = frequency + 1 WHERE id = ?', (q_id,))
+            matched = True
+            break
+
+    if not matched:
+        cursor.execute('INSERT INTO faqs (question, answer, frequency) VALUES (?, ?, ?)',
+                       ("", answer, 1))
+
+    # Generate questions for high-frequency answers
+    cursor.execute('SELECT id, answer, frequency FROM faqs WHERE frequency >= ? AND question = ""', (faq_threshold,))
+    for row in cursor.fetchall():
+        faq_id, faq_answer, _ = row
+        generated_q = generate_question_from_answer(faq_answer)
+        cursor.execute('UPDATE faqs SET question = ? WHERE id = ?', (generated_q, faq_id))
+
+    conn.commit()
+    conn.close()
+
+# Retrieve all finalized FAQs
+def get_faqs():
+    conn = sqlite3.connect('faq_db.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ""', (faq_threshold,))
+    faqs = cursor.fetchall()
+    conn.close()
     return faqs
 
-# Run the app
+# Extract text from uploaded file
+def extract_text_from_file(file):
+    global uploaded_text
+    if file.filename.endswith(".pdf"):
+        with pdfplumber.open(file) as pdf:
+            uploaded_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    elif file.filename.endswith(".txt"):
+        uploaded_text = file.read().decode("utf-8")
+    else:
+        raise ValueError("Unsupported file format. Use PDF or TXT.")
+
+# Ask question using Groq with context
+def ask_groq_api(context, question):
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You're a helpful assistant that explains error logs and helps fix code issues and you will provide error name and step by step solution to how to solve them and it should not go more than 3 lines."
+            },
+            {"role": "user", "content": f"Context: {context}\nQuestion: {question}\nAnswer:"}
+        ]
+    }
+    res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
+    if res.status_code == 200:
+        return res.json()['choices'][0]['message']['content'].strip()
+    return "Sorry, I couldn't generate an answer."
+
+# Flask routes
+@app.route("/", methods=["GET"])
+def home():
+    faqs = get_faqs()
+    return render_template("index.html", faqs=faqs, file_uploaded=False)
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    file = request.files["file"]
+    try:
+        extract_text_from_file(file)
+        faqs = get_faqs()
+        return render_template("index.html", file_uploaded=True, faqs=faqs)
+    except Exception as e:
+        return render_template("index.html", file_uploaded=False, error=str(e))
+
+@app.route("/ask", methods=["POST"])
+def ask():
+    question = request.form["question"]
+    answer = ""
+    if question and uploaded_text:
+        answer = ask_groq_api(uploaded_text, question)
+        store_answer_and_generate_faq(answer)
+
+    faqs = get_faqs()
+    return render_template("index.html", answer=answer, faqs=faqs, file_uploaded=True)
+
+# Initialize DB on start
+init_db()
+
 if __name__ == "__main__":
     app.run(debug=True)
