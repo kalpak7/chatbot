@@ -50,3 +50,4 @@ EXPOSE 5000
 
 # Run with gunicorn
 CMD ["gunicorn", "main:app", "--bind", "0.0.0.0:5000", "--timeout", "180"]
+
