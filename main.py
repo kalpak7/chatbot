@@ -3,27 +3,20 @@ import sqlite3
 import numpy as np
 import warnings
 from flask import Flask, render_template, request
-from sentence_transformers import SentenceTransformer
 import pdfplumber
 import requests
 
 app = Flask(__name__)
 
-# Load embedding model for comparing answers
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-# Constants
 GROQ_MODEL = "llama3-70b-8192"
 faq_threshold = 2
 uploaded_text = ""
 
 
 def get_groq_api_key():
-
     key = os.getenv('GROQ_API_KEY')
-  
     if not key:
-        warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
+        warnings.warn("GROQ_API_KEY environment variable not set.")
     return key
 
 
@@ -50,19 +43,22 @@ def cosine_similarity(vec1, vec2):
     return dot / (norm1 * norm2)
 
 
-def store_answer_and_generate_faq(answer, embedding):
+def store_answer_and_generate_faq(answer):
     conn = sqlite3.connect("faq_db.db")
     cursor = conn.cursor()
-    emb = np.array(embedding)[0]
+
+    # Use a zero vector or NULL if embedding is not available at runtime
+    emb = np.zeros(384, dtype=np.float32)
 
     cursor.execute("SELECT id, answer, frequency, embedding FROM faqs")
     for row in cursor.fetchall():
         faq_id, existing_answer, freq, stored_emb_blob = row
+        if not stored_emb_blob:
+            continue
         stored_emb = np.frombuffer(stored_emb_blob, dtype=np.float32)
         sim = cosine_similarity(emb, stored_emb)
         if sim > 0.8:
             cursor.execute("UPDATE faqs SET frequency = frequency + 1 WHERE id = ?", (faq_id,))
-            # Set question = answer if it reaches threshold and question is still empty
             if freq + 1 >= faq_threshold:
                 cursor.execute(
                     "UPDATE faqs SET question = answer WHERE id = ? AND question = ''",
@@ -72,10 +68,9 @@ def store_answer_and_generate_faq(answer, embedding):
             conn.close()
             return
 
-    # Insert new answer
     cursor.execute(
         "INSERT INTO faqs (question, answer, frequency, embedding) VALUES (?, ?, ?, ?)",
-        ("", answer, 1, emb.astype(np.float32).tobytes())
+        ("", answer, 1, emb.tobytes())
     )
     conn.commit()
     conn.close()
@@ -142,8 +137,7 @@ def ask():
     answer = ""
     if question and uploaded_text:
         answer = ask_groq_api(uploaded_text, question)
-        ans_emb = model.encode([answer])
-        store_answer_and_generate_faq(answer, ans_emb)
+        store_answer_and_generate_faq(answer)
 
     return render_template("index.html", answer=answer, file_uploaded=True, faqs=get_faqs())
 
