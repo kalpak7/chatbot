@@ -9,3 +9,4 @@ env/
 .gitignore
 test/
 tests/
+sentence-transformers/
