@@ -19,16 +19,14 @@ uploaded_text = ""
 
 
 def get_groq_api_key():
-
-    #key = os.getenv('GROQ_API_KEY')
-    key="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"
-
+    key = os.getenv('GROQ_API_KEY')
     if not key:
         warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
     return key
 
 
 def init_db():
+    # (Still defined, but not called automatically here)
     conn = sqlite3.connect("faq_db.db")
     cursor = conn.cursor()
     cursor.execute('''
@@ -63,7 +61,6 @@ def store_answer_and_generate_faq(answer, embedding):
         sim = cosine_similarity(emb, stored_emb)
         if sim > 0.8:
             cursor.execute("UPDATE faqs SET frequency = frequency + 1 WHERE id = ?", (faq_id,))
-            # Set question = answer if it reaches threshold and question is still empty
             if freq + 1 >= faq_threshold:
                 cursor.execute(
                     "UPDATE faqs SET question = answer WHERE id = ? AND question = ''",
@@ -73,7 +70,6 @@ def store_answer_and_generate_faq(answer, embedding):
             conn.close()
             return
 
-    # Insert new answer
     cursor.execute(
         "INSERT INTO faqs (question, answer, frequency, embedding) VALUES (?, ?, ?, ?)",
         ("", answer, 1, emb.astype(np.float32).tobytes())
@@ -85,7 +81,10 @@ def store_answer_and_generate_faq(answer, embedding):
 def get_faqs():
     conn = sqlite3.connect("faq_db.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ''", (faq_threshold,))
+    cursor.execute(
+        "SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ''",
+        (faq_threshold,)
+    )
     faqs = cursor.fetchall()
     conn.close()
     return faqs
@@ -150,5 +149,5 @@ def ask():
 
 
 if __name__ == "__main__":
-    init_db()
+    # We no longer call init_db() here; assume DB/table exist already.
     app.run(debug=True)
