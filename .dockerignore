@@ -10,3 +10,4 @@ env/
 test/
 tests/
 sentence-transformers/
+sentence-transformers
