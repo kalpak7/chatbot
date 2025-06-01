@@ -21,8 +21,7 @@ uploaded_text = ""
 def get_groq_api_key():
 
     key = os.getenv('GROQ_API_KEY')
-    
-
+  
     if not key:
         warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
     return key
