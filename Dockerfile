@@ -25,7 +25,7 @@ RUN python generate_embeddings.py
 RUN rm -rf /root/.cache /usr/local/lib/python3.10/site-packages/sentence_transformers \
     && find /usr/local -type d -name "sentence_transformers" -exec rm -rf {} + || true
 
----
+
 
 # ---------- Stage 2: Runtime ----------
 FROM python:3.10-slim
