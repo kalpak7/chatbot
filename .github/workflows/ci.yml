@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install dependencies (build requirements)
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -68,12 +68,12 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ✅ *CI Passed on `${{ github.ref_name }}`*
-            👤 *By:* `${{ github.actor }}`
-            📝 *Commit Message:* `${{ github.event.head_commit.message }}`
+            ✅ *CI Passed on `${{ github.ref_name }}`*  
+            👤 *By:* `${{ github.actor }}`  
+            📝 *Commit Message:* `${{ github.event.head_commit.message }}`  
             🔗 *Commit:* https://github.com/${{ github.repository }}/commit/${{ github.sha }}
 
-            🐳 *Docker Image Built & Pushed!*
+            🐳 *Docker Image Built & Pushed!*  
             📦 `ghcr.io/${{ github.repository_owner }}/error-debugger-chatbot:latest`
 
             ▶️ *To run the Docker image locally:*
