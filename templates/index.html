@@ -27,6 +27,37 @@
           <button type="submit">Upload</button>
         </form>
 
+        <!-- Display single issue and solution in bullet format -->
+        {% if issue_solution %}
+        <div class="answer-box">
+          <div class="answer-header">Issue & Solution</div>
+          <div class="answer-content">
+            {% set parts = issue_solution.split("Short and clear solution:") %}
+            <ul>
+              <li><strong>Main Issue:</strong> {{ parts[0].strip() }}</li>
+              {% if parts | length > 1 %}
+              <li>
+                <strong>Recommended Solution:</strong> {{ parts[1].strip() }}
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- New Section: Show detected errors/issues and solutions -->
+        {% if detected_issues and detected_issues|length > 0 %}
+        <div class="issue-section">
+          <div class="issue-header">⚠️ Detected Issues and Solutions</div>
+          {% for issue, solution in detected_issues %}
+          <div class="issue-item">
+            <div class="issue-title">• {{ issue }}</div>
+            <div class="issue-solution">Solution: {{ solution }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
         <!-- Question form -->
         {% if file_uploaded %}
         <form action="/ask" method="POST">
