@@ -10,21 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
-COPY requirements.txt ./
+COPY requirements.txt ./ 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Set up DB and generate embeddings
-COPY init_db.py generate_embeddings.py ./
+COPY init_db.py generate_embeddings.py ./ 
 RUN python init_db.py
 
-# Copy full app to use data for embeddings
-COPY . .
+# Copy rest of the app and generate embeddings
+COPY . ./ 
 RUN python generate_embeddings.py
-
-# Remove heavy sentence-transformers to reduce image size
-RUN rm -rf /root/.cache /usr/local/lib/python3.10/site-packages/sentence_transformers \
-    && find /usr/local -type d -name "sentence_transformers" -exec rm -rf {} + || true
-
 
 
 # ---------- Stage 2: Runtime ----------
@@ -35,21 +30,25 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install runtime deps (pdfplumber needs poppler)
+# Install only required system dependencies for runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpoppler-cpp-dev \
     pkg-config \
+    build-essential \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps (no sentence-transformers needed now)
-COPY requirements.txt ./
-RUN pip install --no-cache-dir Flask==3.1.0 requests==2.32.3 pdfplumber==0.11.6 numpy==1.26.4 gunicorn==21.2.0
+# Install Python dependencies exactly from requirements (including sentence-transformers)
+COPY requirements.txt ./ 
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy runtime files only
+# Copy app files from builder
 COPY --from=builder /app/faq_db.db ./faq_db.db
 COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/main.py ./main.py
+COPY --from=builder /app/init_db.py ./init_db.py
+COPY --from=builder /app/generate_embeddings.py ./generate_embeddings.py
 
 EXPOSE 5000
 
