@@ -14,7 +14,7 @@ index = None
 texts = []
 uploaded_text = ""
 faq_threshold = 2
-GROQ_API_KEY = "Your Api key"
+GROQ_API_KEY = "Your Api Key"
 GROQ_MODEL = "llama3-70b-8192"
 
 def init_db():
@@ -42,7 +42,7 @@ def generate_question_from_answer(answer):
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    prompt = f"Return only the FAQ-style question (no explanation) for the following answer:\n\n{answer}"
+    prompt = f"Return only the FAQ-style question which is sutable  (no explanation) for the following answer:\n\n{answer}"
     data = {
         "model": GROQ_MODEL,
         "messages": [
@@ -114,7 +114,7 @@ def ask_groq_api(context, question):
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant. Provide short, clear answers for FAQ purposes."
+                "content": "You are a helpful assistant. Provide short, clear answers for FAQ purposes according the question asked."
             },
             {"role": "user", "content": f"Context: {context}\nQuestion: {question}\nAnswer:"}
         ]
@@ -123,6 +123,17 @@ def ask_groq_api(context, question):
     if res.status_code == 200:
         return res.json()['choices'][0]['message']['content'].strip()
     return "Sorry, I couldn't generate an answer."
+
+# New function to extract issue and solution
+def extract_issue_and_solution(text):
+    prompt = f"""
+Extract the main error or issue from the following content and provide a short and clear solution for it.
+If no issue is found, say "No significant error or issue found."
+
+Content:
+{text}
+"""
+    return ask_groq_api("", prompt)
 
 @app.route("/", methods=["GET"])
 def home():
@@ -143,8 +154,11 @@ def upload():
         index = faiss.IndexFlatL2(dimension)
         index.add(np.array(embeddings))
 
+        # Extract issue and solution
+        issue_solution = extract_issue_and_solution(uploaded_text)
+
         faqs = get_faqs()
-        return render_template("index.html", file_uploaded=True, faqs=faqs)
+        return render_template("index.html", file_uploaded=True, issue_solution=issue_solution, faqs=faqs)
     except Exception as e:
         return render_template("index.html", file_uploaded=False, error=str(e), faqs=[])
 
