@@ -1,4 +1,3 @@
-# Import required modules
 from flask import Flask, render_template, request
 import sqlite3
 import numpy as np
@@ -6,24 +5,18 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import pdfplumber
 import requests
-import os
-import re
 
-# Flask app
 app = Flask(__name__)
 
-# Embedding model
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Global variables
 index = None
 texts = []
 uploaded_text = ""
 faq_threshold = 2
-GROQ_API_KEY = "your Api key"  # Replace with your actual API key
+GROQ_API_KEY = "Your Api key"
 GROQ_MODEL = "llama3-70b-8192"
 
-# Initialize SQLite database
 def init_db():
     conn = sqlite3.connect('faq_db.db')
     cursor = conn.cursor()
@@ -38,7 +31,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Cosine similarity function
 def cosine_similarity(vec1, vec2):
     dot = np.dot(vec1, vec2)
     norm1 = np.linalg.norm(vec1)
@@ -63,7 +55,6 @@ def generate_question_from_answer(answer):
         return res.json()['choices'][0]['message']['content'].strip()
     return "Frequently asked question"
 
-# Store answer and manage FAQ entries
 def store_answer_and_generate_faq(answer, embedding):
     conn = sqlite3.connect('faq_db.db')
     cursor = conn.cursor()
@@ -95,7 +86,6 @@ def store_answer_and_generate_faq(answer, embedding):
     conn.commit()
     conn.close()
 
-# Retrieve all finalized FAQs
 def get_faqs():
     conn = sqlite3.connect('faq_db.db')
     cursor = conn.cursor()
@@ -104,7 +94,6 @@ def get_faqs():
     conn.close()
     return faqs
 
-# Extract text from uploaded file
 def extract_text_from_file(file):
     global uploaded_text
     if file.filename.endswith(".pdf"):
@@ -115,7 +104,6 @@ def extract_text_from_file(file):
     else:
         raise ValueError("Unsupported file format. Use PDF or TXT.")
 
-# Ask question using Groq with context
 def ask_groq_api(context, question):
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -136,7 +124,6 @@ def ask_groq_api(context, question):
         return res.json()['choices'][0]['message']['content'].strip()
     return "Sorry, I couldn't generate an answer."
 
-# Flask routes
 @app.route("/", methods=["GET"])
 def home():
     faqs = get_faqs()
@@ -159,7 +146,7 @@ def upload():
         faqs = get_faqs()
         return render_template("index.html", file_uploaded=True, faqs=faqs)
     except Exception as e:
-        return render_template("index.html", file_uploaded=False, error=str(e))
+        return render_template("index.html", file_uploaded=False, error=str(e), faqs=[])
 
 @app.route("/ask", methods=["POST"])
 def ask():
@@ -177,7 +164,6 @@ def ask():
     faqs = get_faqs()
     return render_template("index.html", answer=answer, faqs=faqs, file_uploaded=True)
 
-# Initialize DB on start
 init_db()
 
 if __name__ == "__main__":
