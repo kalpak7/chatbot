@@ -1,17 +1,18 @@
 import os
+import warnings
 import sqlite3
 import numpy as np
-import warnings
-from flask import Flask, render_template, request
 import pdfplumber
 import requests
+from flask import Flask, render_template, request
+from sentence_transformers import SentenceTransformer
+from init_db import init_db
 
 app = Flask(__name__)
-
-# Constants
 GROQ_MODEL = "llama3-70b-8192"
 faq_threshold = 2
 uploaded_text = ""
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
 def get_groq_api_key():
@@ -21,29 +22,10 @@ def get_groq_api_key():
     return key
 
 
-def init_db():
-    conn = sqlite3.connect("faq_db.db")
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS faqs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            question TEXT,
-            answer TEXT,
-            frequency INTEGER,
-            embedding BLOB
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-
 def get_faqs():
     conn = sqlite3.connect("faq_db.db")
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ''",
-        (faq_threshold,)
-    )
+    cursor.execute("SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ''", (faq_threshold,))
     faqs = cursor.fetchall()
     conn.close()
     return faqs
@@ -80,6 +62,40 @@ def ask_groq_api(context, question):
     return "Sorry, no answer could be generated."
 
 
+def cosine_similarity(vec1, vec2):
+    dot = np.dot(vec1, vec2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+    return dot / (norm1 * norm2)
+
+
+def store_answer_and_generate_faq(answer, embedding, threshold=2):
+    conn = sqlite3.connect("faq_db.db")
+    cursor = conn.cursor()
+    emb = np.array(embedding)[0]
+
+    cursor.execute("SELECT id, answer, frequency, embedding FROM faqs")
+    for row in cursor.fetchall():
+        faq_id, existing_answer, freq, stored_emb_blob = row
+        if stored_emb_blob:
+            stored_emb = np.frombuffer(stored_emb_blob, dtype=np.float32)
+            sim = cosine_similarity(emb, stored_emb)
+            if sim > 0.8:
+                cursor.execute("UPDATE faqs SET frequency = frequency + 1 WHERE id = ?", (faq_id,))
+                if freq + 1 >= threshold:
+                    cursor.execute("UPDATE faqs SET question = answer WHERE id = ? AND question = ''", (faq_id,))
+                conn.commit()
+                conn.close()
+                return
+
+    cursor.execute(
+        "INSERT INTO faqs (question, answer, frequency, embedding) VALUES (?, ?, ?, ?)",
+        ("", answer, 1, emb.astype(np.float32).tobytes())
+    )
+    conn.commit()
+    conn.close()
+
+
 @app.route("/", methods=["GET"])
 def home():
     return render_template("index.html", faqs=get_faqs(), file_uploaded=False)
@@ -101,13 +117,12 @@ def ask():
     answer = ""
     if question and uploaded_text:
         answer = ask_groq_api(uploaded_text, question)
-
-        # Embedding generation skipped at runtime
-        # No DB update — you could log answers if needed separately
-        # store_answer_and_generate_faq(answer, dummy_embedding)
+        ans_emb = model.encode([answer])
+        store_answer_and_generate_faq(answer, ans_emb, threshold=faq_threshold)
 
     return render_template("index.html", answer=answer, file_uploaded=True, faqs=get_faqs())
 
 
 if __name__ == "__main__":
+    init_db()
     app.run(debug=True)
