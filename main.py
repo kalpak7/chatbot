@@ -1,35 +1,29 @@
-import os
+from flask import Flask, render_template, request
 import sqlite3
 import numpy as np
-import warnings
-from flask import Flask, render_template, request
 from sentence_transformers import SentenceTransformer
+import faiss
 import pdfplumber
 import requests
 
 app = Flask(__name__)
 
-# Load embedding model for comparing answers
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Constants
+index = None
+texts = []
+uploaded_text = ""
+faq_threshold = 2
+GROQ_API_KEY = "Your Api Key"
+
 GROQ_MODEL = "llama3-70b-8192"
 faq_threshold = 2
 uploaded_text = ""
 
 
-def get_groq_api_key():
-
-    key = os.getenv('GROQ_API_KEY')
-    #key = "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"  # Replace with your actual API key
-
-    if not key:
-        warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
-    return key
-
-
 def init_db():
-    conn = sqlite3.connect("faq_db.db")
+    conn = sqlite3.connect('faq_db.db')
+
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS faqs (
@@ -37,12 +31,11 @@ def init_db():
             question TEXT,
             answer TEXT,
             frequency INTEGER,
-            embedding BLOB
-        )
+            embedding BLOB)
+
     ''')
     conn.commit()
     conn.close()
-
 
 def cosine_similarity(vec1, vec2):
     dot = np.dot(vec1, vec2)
@@ -51,45 +44,64 @@ def cosine_similarity(vec1, vec2):
     return dot / (norm1 * norm2)
 
 
+def generate_question_from_answer(answer):
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    prompt = f"Return only the FAQ-style question which is sutable  (no explanation) for the following answer:\n\n{answer}"
+    data = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": "You generate FAQ-style questions from answers. Only return the question."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+    res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
+    if res.status_code == 200:
+        return res.json()['choices'][0]['message']['content'].strip()
+    return "Frequently asked question"
+
 def store_answer_and_generate_faq(answer, embedding):
-    conn = sqlite3.connect("faq_db.db")
+    conn = sqlite3.connect('faq_db.db')
     cursor = conn.cursor()
-    emb = np.array(embedding)[0]
+    embedding_np = np.array(embedding)[0]
 
-    cursor.execute("SELECT id, answer, frequency, embedding FROM faqs")
-    for row in cursor.fetchall():
-        faq_id, existing_answer, freq, stored_emb_blob = row
-        stored_emb = np.frombuffer(stored_emb_blob, dtype=np.float32)
-        sim = cosine_similarity(emb, stored_emb)
+    cursor.execute("SELECT id, question, answer, frequency, embedding FROM faqs")
+    all_rows = cursor.fetchall()
+
+    matched = False
+    for row in all_rows:
+        q_id, _, existing_answer, freq, emb_blob = row
+        stored_embedding = np.frombuffer(emb_blob, dtype=np.float32)
+        sim = cosine_similarity(embedding_np, stored_embedding)
         if sim > 0.8:
-            cursor.execute("UPDATE faqs SET frequency = frequency + 1 WHERE id = ?", (faq_id,))
-            # Set question = answer if it reaches threshold and question is still empty
-            if freq + 1 >= faq_threshold:
-                cursor.execute(
-                    "UPDATE faqs SET question = answer WHERE id = ? AND question = ''",
-                    (faq_id,)
-                )
-            conn.commit()
-            conn.close()
-            return
+            cursor.execute('UPDATE faqs SET frequency = frequency + 1 WHERE id = ?', (q_id,))
+            matched = True
+            break
 
-    # Insert new answer
-    cursor.execute(
-        "INSERT INTO faqs (question, answer, frequency, embedding) VALUES (?, ?, ?, ?)",
-        ("", answer, 1, emb.astype(np.float32).tobytes())
-    )
+    if not matched:
+        cursor.execute('INSERT INTO faqs (question, answer, frequency, embedding) VALUES (?, ?, ?, ?)',
+                       ("", answer, 1, embedding_np.astype(np.float32).tobytes()))
+
+    cursor.execute('SELECT id, answer, frequency FROM faqs WHERE frequency >= ? AND question = ""', (faq_threshold,))
+    for row in cursor.fetchall():
+        faq_id, faq_answer, _ = row
+        generated_q = generate_question_from_answer(faq_answer)
+        cursor.execute('UPDATE faqs SET question = ? WHERE id = ?', (generated_q, faq_id))
+
     conn.commit()
     conn.close()
 
-
 def get_faqs():
-    conn = sqlite3.connect("faq_db.db")
+    conn = sqlite3.connect('faq_db.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ''", (faq_threshold,))
+    cursor.execute('SELECT question, answer FROM faqs WHERE frequency >= ? AND question != ""', (faq_threshold,))
     faqs = cursor.fetchall()
     conn.close()
     return faqs
-
 
 def extract_text_from_file(file):
     global uploaded_text
@@ -101,54 +113,81 @@ def extract_text_from_file(file):
     else:
         raise ValueError("Unsupported file format. Use PDF or TXT.")
 
-
 def ask_groq_api(context, question):
-    api_key = get_groq_api_key()
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    prompt = f"Context: {context}\nQuestion: {question}\nAnswer:"
     data = {
         "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": "You are a helpful assistant. Provide short, clear answers for FAQ purposes."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": "You are a helpful assistant. Provide short, clear answers for FAQ purposes according the question asked."
+            },
+            {"role": "user", "content": f"Context: {context}\nQuestion: {question}\nAnswer:"}
         ]
     }
     res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=data)
-    if res.ok:
+    if res.status_code == 200:
         return res.json()['choices'][0]['message']['content'].strip()
-    return "Sorry, no answer could be generated."
+    return "Sorry, I couldn't generate an answer."
 
+# New function to extract issue and solution
+def extract_issue_and_solution(text):
+    prompt = f"""
+Extract the main error or issue from the following content and provide a short and clear solution for it.
+If no issue is found, say "No significant error or issue found."
+
+Content:
+{text}
+"""
+    return ask_groq_api("", prompt)
 
 @app.route("/", methods=["GET"])
 def home():
-    return render_template("index.html", faqs=get_faqs(), file_uploaded=False)
-
+    faqs = get_faqs()
+    return render_template("index.html", faqs=faqs, file_uploaded=False)
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files.get("file")
+    file = request.files["file"]
     try:
         extract_text_from_file(file)
-        return render_template("index.html", file_uploaded=True, faqs=get_faqs())
-    except Exception as e:
-        return render_template("index.html", file_uploaded=False, error=str(e))
+        global texts
+        texts = [uploaded_text[i:i + 500] for i in range(0, len(uploaded_text), 500)]
+        embeddings = model.encode(texts)
 
+        global index
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatL2(dimension)
+        index.add(np.array(embeddings))
+
+        # Extract issue and solution
+        issue_solution = extract_issue_and_solution(uploaded_text)
+
+        faqs = get_faqs()
+        return render_template("index.html", file_uploaded=True, issue_solution=issue_solution, faqs=faqs)
+    except Exception as e:
+        return render_template("index.html", file_uploaded=False, error=str(e), faqs=[])
 
 @app.route("/ask", methods=["POST"])
 def ask():
-    question = request.form.get("question", "").strip()
+    question = request.form["question"]
     answer = ""
-    if question and uploaded_text:
-        answer = ask_groq_api(uploaded_text, question)
+    if question:
+        q_emb = model.encode([question])
+        _, I = index.search(np.array(q_emb), k=1)
+        context = texts[I[0][0]]
+        answer = ask_groq_api(context, question)
+
         ans_emb = model.encode([answer])
         store_answer_and_generate_faq(answer, ans_emb)
 
-    return render_template("index.html", answer=answer, file_uploaded=True, faqs=get_faqs())
+    faqs = get_faqs()
+    return render_template("index.html", answer=answer, faqs=faqs, file_uploaded=True)
 
+init_db()
 
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True)

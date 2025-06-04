@@ -54,7 +54,9 @@ button {
 }
 
 button:hover {
-  background-color: #357ABD;
+
+  background-color: #357abd;
+
 }
 
 .error-box {
@@ -63,7 +65,10 @@ button:hover {
   border-radius: 10px;
   color: #a83232;
   margin-top: 20px;
+  font-weight: bold;
 }
+
+/* Answer Box */
 
 .answer-box {
   background: #e9f6ec;
@@ -89,6 +94,9 @@ button:hover {
   line-height: 1.6;
   color: #333;
 }
+
+
+/* FAQ styles */
 
 .faq-title {
   margin-top: 50px;
@@ -134,4 +142,26 @@ button:hover {
   color: #4a90e2;
   font-weight: bold;
   margin-right: 5px;
+
+}
+
+/* Toggle FAQ button */
+.faq-toggle-btn {
+  margin: 20px 0;
+  background-color: #4a90e2;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 16px;
+}
+
+.faq-toggle-btn:hover {
+  background-color: #357abd;
+}
+
+.hidden {
+  display: none;
+
 }
