@@ -54,7 +54,9 @@ button {
 }
 
 button:hover {
+
   background-color: #357abd;
+
 }
 
 .error-box {
@@ -67,6 +69,7 @@ button:hover {
 }
 
 /* Answer Box */
+
 .answer-box {
   background: #e9f6ec;
   border-left: 6px solid #2ecc71;
@@ -92,7 +95,9 @@ button:hover {
   color: #333;
 }
 
+
 /* FAQ styles */
+
 .faq-title {
   margin-top: 50px;
   font-size: 26px;
@@ -137,6 +142,7 @@ button:hover {
   color: #4a90e2;
   font-weight: bold;
   margin-right: 5px;
+
 }
 
 /* Toggle FAQ button */
@@ -157,4 +163,5 @@ button:hover {
 
 .hidden {
   display: none;
+
 }

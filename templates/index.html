@@ -3,10 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>Chatbot File Analyzer</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='style.css') }}"
-    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
     <div class="container">
@@ -15,6 +12,7 @@
       {% if error %}
       <div class="error-box"><strong>Error:</strong> {{ error }}</div>
       {% endif %}
+
 
       <!-- Toggle FAQ button (always shown) -->
       <button id="toggleFaqBtn" class="faq-toggle-btn">Show FAQs</button>
@@ -93,6 +91,7 @@
           <p>No FAQs available.</p>
           {% endif %}
         </div>
+
       </div>
     </div>
 

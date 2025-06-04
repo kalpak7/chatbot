@@ -15,10 +15,15 @@ texts = []
 uploaded_text = ""
 faq_threshold = 2
 GROQ_API_KEY = "Your Api Key"
+
 GROQ_MODEL = "llama3-70b-8192"
+faq_threshold = 2
+uploaded_text = ""
+
 
 def init_db():
     conn = sqlite3.connect('faq_db.db')
+
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS faqs (
@@ -27,6 +32,7 @@ def init_db():
             answer TEXT,
             frequency INTEGER,
             embedding BLOB)
+
     ''')
     conn.commit()
     conn.close()
@@ -37,11 +43,14 @@ def cosine_similarity(vec1, vec2):
     norm2 = np.linalg.norm(vec2)
     return dot / (norm1 * norm2)
 
+
 def generate_question_from_answer(answer):
+
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
+
     prompt = f"Return only the FAQ-style question which is sutable  (no explanation) for the following answer:\n\n{answer}"
     data = {
         "model": GROQ_MODEL,
