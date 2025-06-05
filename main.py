@@ -19,7 +19,7 @@ faq_threshold = 2
 GROQ_MODEL = "llama3-70b-8192"
 
 def get_groq_api_key():
-    key = "your api key"  # os.getenv("GROQ_API_KEY")
+    key = os.getenv("GROQ_API_KEY")
     if not key:
         warnings.warn("GROQ_API_KEY environment variable not set. API calls will fail.")
     return key
