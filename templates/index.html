@@ -13,7 +13,6 @@
       <div class="error-box"><strong>Error:</strong> {{ error }}</div>
       {% endif %}
 
-
       <!-- Toggle FAQ button (always shown) -->
       <button id="toggleFaqBtn" class="faq-toggle-btn">Show FAQs</button>
 
@@ -82,16 +81,17 @@
       <div id="faqSection" class="hidden">
         <h2 class="faq-title">📌 Frequently Asked Questions</h2>
         <div class="faq-grid">
-          {% if faqs and faqs|length > 0 %} {% for q, a in faqs %}
-          <div class="faq-card">
-            <div class="faq-q"><span>Q:</span> {{ q }}</div>
-            <div class="faq-a"><span>A:</span> {{ a }}</div>
-          </div>
-          {% endfor %} {% else %}
+          {% if faqs and faqs|length > 0 %}
+            {% for q, a in faqs %}
+            <div class="faq-card">
+              <div class="faq-q"><span>Q:</span> {{ q }}</div>
+              <div class="faq-a"><span>A:</span> {{ a }}</div>
+            </div>
+            {% endfor %}
+          {% else %}
           <p>No FAQs available.</p>
           {% endif %}
         </div>
-
       </div>
     </div>
 
