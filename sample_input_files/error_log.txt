@@ -1,0 +1,68 @@
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins-agent-ec2-i-07f29 in /var/lib/jenkins/workspace/cdk-prod-deploy
+[Pipeline] {
+[Pipeline] checkout
+Cloning the remote Git repository...
+ > git init /var/lib/jenkins/workspace/cdk-prod-deploy # timeout=10
+Fetching upstream changes from https://github.com/example-org/cdk-infra.git
+ > git fetch --tags --progress -- https://github.com/example-org/cdk-infra.git +refs/heads/*:refs/remotes/origin/*
+Checking out Revision 4ad8e16a6b48f3734ecf3b1dd3f13f21ae6d57fa (refs/remotes/origin/main)
+Commit message: "Add new ECS service and update VPC config"
+[Pipeline] }
+
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] sh
++ node -v
+v18.19.0
+[Pipeline] sh
++ npm ci
+added 173 packages in 9.4s
+
+[Pipeline] sh
++ npx cdk synth
+[Warning at /MyAppStack] BucketPolicy: policy contains wildcard actions
+✨  Synthesis time: 4.87s
+Successfully synthesized to ./cdk.out
+
+[Pipeline] sh
++ npx cdk deploy --require-approval never
+
+CDKToolkit: deploying...
+CDKToolkit: creating CloudFormation changeset...
+
+ ✅  CDKToolkit
+
+MyAppStack: deploying...
+[0%] start: Publishing 123abc456def.us-east-1.amazonaws.com:currentAsset
+[10%] start: Creating CloudFormation change set
+[Error] ⨯ Failed to publish asset "123abc456def" to S3
+Error: AccessDenied: Access Denied
+    at Request.extractError (/var/lib/jenkins/workspace/cdk-prod-deploy/node_modules/aws-sdk/lib/services/s3.js:577:35)
+    at Request.callListeners (/var/lib/jenkins/workspace/cdk-prod-deploy/node_modules/aws-sdk/lib/sequential_executor.js:106:20)
+    at Request.emit (/var/lib/jenkins/workspace/cdk-prod-deploy/node_modules/aws-sdk/lib/sequential_executor.js:78:10)
+    at Request.emit (/var/lib/jenkins/workspace/cdk-prod-deploy/node_modules/aws-sdk/lib/request.js:688:14)
+Caused by: AccessDenied: Access Denied
+    at Object.<anonymous> (/var/lib/jenkins/workspace/cdk-prod-deploy/node_modules/aws-sdk/lib/event_listeners.js:334:42)
+
+ ❌  MyAppStack failed: Error: Failed to publish one or more assets
+
+Stack deployment failed due to asset upload failure.
+Please check:
+ - IAM permissions on the deployment role
+ - Bucket policies on CDKToolkit-staging-bucket-1a2b3c
+ - S3 encryption settings
+
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] sh
++ echo 'CDK Deploy Failed. Check above logs for details.'
+CDK Deploy Failed. Check above logs for details.
+[Pipeline] emailext
+Sending failure email to: devops-team@example.com
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+ERROR: script returned exit code 1
+Finished: FAILURE
